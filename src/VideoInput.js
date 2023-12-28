@@ -30,7 +30,7 @@ export default function VideoInput({ width, height }) {
         new fabric.Canvas('canvas', {
             height: videoRef.current.clientHeight,
             width: videoRef.current.clientWidth,
-            backgroundColor: 'pink',
+            backgroundColor: 'blue',
         });
     }
     
