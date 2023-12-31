@@ -27,3 +27,8 @@
   line-height: 40px;
   text-align: center;
 }
+
+.VideoCanvas {
+  display: block;
+  margin: 0;
+}

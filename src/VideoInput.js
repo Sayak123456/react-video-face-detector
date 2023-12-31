@@ -23,6 +23,9 @@ export default function VideoInput({ width, height }) {
                 faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL),
             ]).then(setModelsLoaded(true));
         }
+
+        // const canvas = new fabric.Canvas(canvasRef.current);
+        // const videoEl = document.createElement('video');
         loadModels();
     }, []);
 
