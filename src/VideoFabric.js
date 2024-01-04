@@ -6,12 +6,19 @@ export default function VideoFabric({ width, height }) {
     const inputRef = useRef();
     const videoRef = useRef();
     const canvasRef = useRef();
+    const vDect = useRef();
     const [source, setSource] = useState();
     const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [loader, setLoader] = useState(true);
     const [fabricCanvas, setFabricCanvas] = useState(null);
     const [videoCanvas, setVideoCanvas] = useState(null);
+    const [faceDetector, setFaceDetector] = useState([]);
     const animationFrame = useRef(null);
     const vRef = useRef();
+
+    let index=0;
+    let currentRect=[];
+    let intervalIds=[];
 
     // Load the models for face-api
     useEffect(() => {
@@ -27,12 +34,17 @@ export default function VideoFabric({ width, height }) {
             ]).then(setModelsLoaded(true));
         }
 
+        loadModels();
+    }, []);
+
+    function createAndRenderCanvas() {
         const canvas = new fabric.Canvas(canvasRef.current, {
             backgroundColor: "pink",
             width: 500,
             height: 500
         });
         videoRef.current = document.getElementById('video');
+        vDect.current = document.getElementById('videoDect');
         
         const video1 = new fabric.Image(videoRef.current, {
             left: 200,
@@ -42,7 +54,7 @@ export default function VideoFabric({ width, height }) {
             angle: 0,
             originX: 'center',
             originY: 'center',
-            objectCaching: false,
+            objectCaching: true,
         });
 
         canvas.add(video1);
@@ -56,100 +68,106 @@ export default function VideoFabric({ width, height }) {
         };
       
         renderCanvas();
-        loadModels();
+    }
 
-    }, [source]);
-
-    function playVideo() {
+    async function playVideo() {
         if (videoRef.current) {
-          videoRef.current.play();
-          handleVideoOnPlay(fabricCanvas, videoCanvas);
+            videoRef.current.play();
+            function drawRect(coord) {
+                if(currentRect.length>0 || coord.length===0){
+                    currentRect.forEach((curr) => fabricCanvas.remove(curr));
+                }
+                for(let i=0;i<coord.length;i++){
+                    let rect = new fabric.Rect({
+                        left: coord[i].box._x-50+fabricCanvas.getObjects()[0].left-200,
+                        top: coord[i].box._y+50+fabricCanvas.getObjects()[0].top-300,
+                        width: coord[i].box._height+fabricCanvas.getObjects()[0].width-500,
+                        height: coord[i].box._width+fabricCanvas.getObjects()[0].height-500,
+                        fill: 'transparent',
+                        stroke: 'blue',
+                        strokeWidth: 2,
+                        selectable: false,
+                        evented: false,
+                    });
+                    fabricCanvas.add(rect);
+                    fabricCanvas.bringToFront(rect);
+                    fabricCanvas.setActiveObject(rect);
+                    currentRect.push(rect);
+                }
+            }
+            const intervalId = setInterval(() => {
+                if(index<faceDetector.length){
+                    drawRect(faceDetector[index]);
+                    index++;
+                } else {
+                    clearInterval(intervalId);
+                    if(currentRect.length>0)
+                        currentRect.forEach((curr) => fabricCanvas.remove(curr));
+                }
+            }, 1000)
+            intervalIds.push(intervalId);
         }
     };
 
-    function pauseVideo() {
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
-    };
+    async function pauseVideo() {
+        videoRef.current.pause();
+        if(currentRect.length>0)
+            currentRect.forEach((curr) => fabricCanvas.remove(curr));
+        intervalIds.forEach((id) => {
+            clearInterval(id);
+        })
+    }
 
     // Select the video file
     function handleChoose() {
         inputRef.current.click();
     }
     // Set the URL of the video file
-    function handleChange(file) {
+    async function handleChange(file) {
         const url = URL.createObjectURL(file);
-        setSource(url);
+        await setSource(url);
+        console.log(vDect.current);
+        await detect();
     }
 
-    // Display the face detectors on playing the video
-    function handleVideoOnPlay(canvas, videoCanvas) {
-        setInterval(async () => {
-            if ( canvasRef && canvasRef.current ) {
-                canvasRef.current.innerHTML = faceapi.createCanvasFromMedia(videoRef.current);
-                const displaySize = {
-                    width: 500,
-                    height: 500
-                }
-
-                faceapi.matchDimensions(canvasRef.current, displaySize);
-
-                const detections = await faceapi.detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions());
-                
+    async function detect() {
+        if(vDect.current){
+            vDect.current.playbackRate = 4;
+            vDect.current.play();
+            vDect.current.muted = true;
+            const displaySize = { width: 500, height: 500 };
+            const intervalId = setInterval( async() => {
+                const detections = await faceapi.detectAllFaces(vDect.current, new faceapi.TinyFaceDetectorOptions());
                 const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                // console.log(resizedDetections);
+                setFaceDetector((item) => [...item,resizedDetections]);
+            }, 1000/4);
 
-                // canvasRef && canvasRef.current && canvasRef.current.getContext('2d').clearRect(0, 0, displaySize.width, displaySize.height);
-                const ctx = canvasRef.current.getContext('2d');
-
-                // Clear the canvas
-                ctx.clearRect(0, 0, displaySize.width, displaySize.height);
-                
-                // show the box of the face
-                // canvasRef && canvasRef.current && faceapi.draw.drawDetections(ctx, resizedDetections);
-                const fabricCanvas = new fabric.Canvas(canvasRef.current, { selection: false });
-
-                let rect = {};
-
-                resizedDetections.forEach(result => {
-                    const { _x, _y, _width, _height } = result._box;
-                    console.log(_width,_height);
-                
-                    // Create a rectangle using Fabric.js for each detection
-                    rect = new fabric.Rect({
-                      left: _x+canvas.getObjects()[0].left-200,
-                      top: _y+canvas.getObjects()[0].top-300,
-                      width: _width,
-                      height: _height,
-                      fill: 'transparent',
-                      stroke: 'red',
-                      strokeWidth: 2,
-                      selectable: false,
-                      evented: false,
-                    });
-                
-                    // rects.push(rect);
-                    fabricCanvas.add(rect);
-                });
-                console.log(canvas.getObjects()[0]);
-            }
-        }, 100);
+            vDect.current.addEventListener("ended", async() => {
+                clearInterval(intervalId);
+                await vDect.current.parentNode.removeChild(vDect.current);
+                await createAndRenderCanvas();
+                await setLoader(false);
+            });
+            
+        }
     }
 
     return (
+        <>
+        {source && <video ref={vDect} id="videoDect" style={{ display: "none" }} src={source} width="0" height="0"></video> }
         <div className="VideoInput" style={{ position: 'relative' }}>
             {modelsLoaded && <input ref={inputRef} className="VideoInput_input" type="file" onChange={(e) => handleChange(e.target.files[0])} accept=".mov, .mp4" />}
             {!source && <button onClick={() => handleChoose()}>Choose</button>}
+            { source && loader && <h3>Loading!</h3>}
             {source && modelsLoaded && (
                 <>
-                {/* <video ref={videoRef} id="video" className="VideoInput_video" width="70%" height="30%" controls src={source} onPlay={ handleVideoOnPlay} /> */}
-                <canvas ref={canvasRef} id="canvas" className="VideoCanvas" width="70%" height="30%"/>
-                <video ref={vRef} id="video" style={{ display: "none", position: "absolute" }} src={source} controls width="1000" height="500"></video>
-                <button onClick={playVideo}>Play Video</button>
-                <button onClick={pauseVideo}>Pause Video</button>
+                <canvas ref={canvasRef} id="canvas" className="VideoCanvas" width="0" height="0" />
+                <video ref={vRef} id="video" style={{ display: "none", position: "absolute" }} src={source} controls width="500" height="500"></video>
+                {!loader && <button onClick={playVideo}>Play Video</button>}
+                {!loader && <button onClick={pauseVideo}>Pause Video</button>}
                 </>
             )}
         </div>
+        </>
     )
 }
